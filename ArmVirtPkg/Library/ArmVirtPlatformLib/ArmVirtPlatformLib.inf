@@ -62,3 +62,6 @@
   gArmTokenSpaceGuid.PcdFdBaseAddress
   gArmTokenSpaceGuid.PcdFdSize
   gEmbeddedTokenSpaceGuid.PcdPrePiCpuMemorySize
+  gArmPlatformTokenSpaceGuid.PcdCpuGicDistributorBase
+  gArmPlatformTokenSpaceGuid.PcdCpuGicInterruptInterfaceBase
+  gArmPlatformTokenSpaceGuid.PcdCpuMailboxBase

@@ -25,12 +25,24 @@ GCC_ASM_EXPORT(ArmPlatformIsPrimaryCore)
 GCC_ASM_EXPORT(ArmPlatformGetPrimaryCoreMpId)
 GCC_ASM_EXPORT(ArmPlatformGetCorePosition)
 GCC_ASM_EXPORT(ArmGetPhysAddrTop)
+GCC_ASM_EXPORT(ArmPlatformIsGicV2OrLower)
+GCC_ASM_EXPORT(ArmPlatformSecondaryParking)
 
 GCC_ASM_IMPORT(_gPcd_FixedAtBuild_PcdArmPrimaryCore)
 GCC_ASM_IMPORT(_gPcd_FixedAtBuild_PcdArmPrimaryCoreMask)
 GCC_ASM_IMPORT(_gPcd_FixedAtBuild_PcdCoreCount)
 
 ASM_PFX(ArmPlatformPeiBootAction):
+  mov    x19, x30
+  bl     ASM_PFX(ArmPlatformIsPrimaryCore)
+  cmp    x0, #1
+  b.eq   .Lprimary
+  bl     ASM_PFX(ArmPlatformIsGicV2OrLower)
+  cmp    x0, #1
+  b.eq   ASM_PFX(ArmPlatformSecondaryParking)
+
+.Lprimary:
+  mov    x30, x19
   ret
 
 //UINTN
@@ -47,8 +59,88 @@ ASM_PFX(ArmPlatformGetPrimaryCoreMpId):
 //  IN UINTN MpId
 //  );
 ASM_PFX(ArmPlatformIsPrimaryCore):
-  mov   x0, #1
+  mrs   x0, mpidr_el1
+  and   x0, x0, #0xff
+  cmp   x0, #0
+  cset  x0, eq
   ret
+
+//UINTN
+//ArmPlatformIsGicV2OrLower (
+//  VOID
+//  );
+ASM_PFX(ArmPlatformIsGicV2OrLower):
+  LoadConstantToReg (FixedPcdGet32 (PcdCpuGicDistributorBase), x1)
+  ldr   w0, [x1, #4]
+  and   w0, w0, #0x1f
+  cmp   w0, #0x1f
+  cset  w0, ne
+  ret
+
+//
+// Park a secondary CPU in a WFI loop until the primary CPU writes a
+// release address into this CPU's mailbox.
+//
+ASM_PFX(ArmPlatformSecondaryParking):
+  mrs   x0, CurrentEL
+  cmp   x0, #0x8
+  b.ne  .Lparking_el1
+  mrs   x0, hcr_el2
+  mov   x1, #1
+  lsl   x1, x1, #34           // HCR_EL2.E2H
+  orr   x0, x0, x1
+  msr   hcr_el2, x0
+  isb
+.Lparking_el1:
+  msr   daifset, #0xf
+  mrs   x0, CurrentEL
+  cmp   x0, #0x8
+  b.ne  .Ldisable_el1
+  mrs   x1, sctlr_el2
+  bic   x1, x1, #(1 << 12)    // I
+  bic   x1, x1, #(1 << 2)     // C
+  bic   x1, x1, #1            // M
+  msr   sctlr_el2, x1
+  isb
+  b     .Lsctlr_done
+.Ldisable_el1:
+  mrs   x1, sctlr_el1
+  bic   x1, x1, #(1 << 12)
+  bic   x1, x1, #(1 << 2)
+  bic   x1, x1, #1
+  msr   sctlr_el1, x1
+  isb
+.Lsctlr_done:
+  LoadConstantToReg (FixedPcdGet32 (PcdCpuGicInterruptInterfaceBase), x1)
+  mov   w0, #1
+  str   w0, [x1, #0]
+  mov   w0, #0xff
+  str   w0, [x1, #4]
+  dsb   sy
+  isb
+  mrs   x0, mpidr_el1
+  and   x0, x0, #0xff
+  mov   x4, x0
+  LoadConstantToReg (FixedPcdGet32 (PcdCpuMailboxBase), x5)
+  add   x5, x5, x0, lsl #12
+  str   x4, [x5, #0]
+  mov   x0, #0
+  str   x0, [x5, #8]
+  dsb   sy
+  isb
+.Lparking_wait:
+  wfi
+  ldr   x3, [x5, #0]
+  cmp   x3, x4
+  b.ne  .Lparking_wait
+  ldr   x3, [x5, #8]
+  cbz   x3, .Lparking_wait
+  mov   x0, #0
+  str   x0, [x5, #8]
+  dsb   sy
+  isb
+  mov   x0, x5
+  br    x3
 
 //UINTN
 //ArmPlatformGetCorePosition (

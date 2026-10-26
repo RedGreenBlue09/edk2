@@ -162,6 +162,15 @@
   #
   gEmbeddedTokenSpaceGuid.PcdPrePiCpuIoSize|16
 
+  #
+  # ARM General Interrupt Controller
+  #
+  gArmPlatformTokenSpaceGuid.PcdCpuGicDistributorBase|0x08000000
+  gArmPlatformTokenSpaceGuid.PcdCpuGicInterruptInterfaceBase|0x08010000
+
+  ## Mailbox Base Address
+  gArmPlatformTokenSpaceGuid.PcdCpuMailboxBase|0x09ff8000
+
 [PcdsFixedAtBuild.AARCH64]
   gEfiMdeModulePkgTokenSpaceGuid.PcdSetNxForStack|TRUE
 

@@ -26,12 +26,23 @@ GCC_ASM_EXPORT(ArmPlatformIsPrimaryCore)
 GCC_ASM_EXPORT(ArmPlatformGetPrimaryCoreMpId)
 GCC_ASM_EXPORT(ArmPlatformGetCorePosition)
 GCC_ASM_EXPORT(ArmGetPhysAddrTop)
+GCC_ASM_EXPORT(ArmPlatformIsGicV2OrLower)
+GCC_ASM_EXPORT(ArmPlatformSecondaryParking)
 
 GCC_ASM_IMPORT(_gPcd_FixedAtBuild_PcdArmPrimaryCore)
 GCC_ASM_IMPORT(_gPcd_FixedAtBuild_PcdArmPrimaryCoreMask)
 GCC_ASM_IMPORT(_gPcd_FixedAtBuild_PcdCoreCount)
 
 ASM_PFX(ArmPlatformPeiBootAction):
+  mov   r12, lr
+  bl    ASM_PFX(ArmPlatformIsPrimaryCore)
+  cmp   r0, #1
+  beq   _PrimaryCore
+  bl    ASM_PFX(ArmPlatformIsGicV2OrLower)
+  cmp   r0, #1
+  beq   ASM_PFX(ArmPlatformSecondaryParking)
+_PrimaryCore:
+  mov   lr, r12
   bx    lr
 
 //UINTN
@@ -48,8 +59,66 @@ ASM_PFX(ArmPlatformGetPrimaryCoreMpId):
 //  IN UINTN MpId
 //  );
 ASM_PFX(ArmPlatformIsPrimaryCore):
-  mov   r0, #1
+  mrc   p15, 0, r0, c0, c0, 5
+  and   r0, r0, #0xff
+  cmp   r0, #0
+  moveq r0, #1
+  movne r0, #0
   bx    lr
+
+//UINTN
+//ArmPlatformIsGicV2OrLower (
+//  VOID
+//  );
+ASM_PFX(ArmPlatformIsGicV2OrLower):
+  LoadConstantToReg (FixedPcdGet32 (PcdCpuGicDistributorBase), r1)
+  ldr   r0, [r1, #0x4]
+  and   r0, r0, #0x1f
+  cmp   r0, #0x1f
+  moveq r0, #0
+  movne r0, #1
+  bx    lr
+
+//
+// Park a secondary CPU in a WFI loop until the primary CPU writes a
+// release address into this CPU's mailbox.
+//
+ASM_PFX(ArmPlatformSecondaryParking):
+  mrc   p15, 0, r0, c0, c0, 5
+  and   r0, r0, #0xff
+  mov   r4, r0
+  LoadConstantToReg (FixedPcdGet32 (PcdCpuMailboxBase), r5)
+  add   r5, r5, r0, lsl #12
+  LoadConstantToReg (FixedPcdGet32 (PcdCpuGicInterruptInterfaceBase), r1)
+  mov   r2, #1
+  str   r2, [r1, #0]
+  mov   r2, #0xff
+  str   r2, [r1, #4]
+  str   r4, [r5, #0]
+  mov   r2, #0
+  str   r2, [r5, #8]
+  dsb
+  isb
+1:
+  wfi
+  ldr   r3, [r5, #0]
+  cmp   r3, r4
+  bne   1b
+  ldr   r3, [r5, #8]
+  cmp   r3, #0
+  beq   1b
+  mov   r2, #0
+  str   r2, [r5, #8]
+  mrc   p15, 0, r0, c1, c0, 0
+  bic   r0, r0, #1
+  bic   r0, r0, #4
+  bic   r0, r0, #0x1000
+  mcr   p15, 0, r0, c1, c0, 0
+  dsb
+  isb
+  msr   cpsr_c, #0xd3
+  mov   r0, r5
+  bx    r3
 
 //UINTN
 //ArmPlatformGetCorePosition (
