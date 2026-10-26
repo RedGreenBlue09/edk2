@@ -245,11 +245,54 @@ QEMU_VIDEO_BOCHS_MODES  QemuVideoBochsModes[] = {
   { 3840, 2160, 32 },
   { 4096, 2160, 32 },
   { 7680, 4320, 32 },
-  { 8192, 4320, 32 }
+  { 8192, 4320, 32 },
+  //
+  // Spare entry, filled from the EDID preferred mode if it is not listed above.
+  //
+  {    0,    0, 32 }
 };
 
 #define QEMU_VIDEO_BOCHS_MODE_COUNT \
   (sizeof (QemuVideoBochsModes) / sizeof (QemuVideoBochsModes[0]))
+
+/**
+  Read the preferred resolution from the EDID blob that QEMU exposes at the
+  start of the MMIO BAR (set with the xres/yres device properties).
+
+  @retval TRUE   XRes and YRes hold the preferred resolution.
+  @retval FALSE  No usable EDID.
+**/
+STATIC
+BOOLEAN
+QemuVideoBochsEdid (
+  QEMU_VIDEO_PRIVATE_DATA  *Private,
+  UINT32                   *XRes,
+  UINT32                   *YRes
+  )
+{
+  UINT8  Edid[128];
+
+  if (Private->Variant != QEMU_VIDEO_BOCHS_MMIO) {
+    return FALSE;
+  }
+
+  if (EFI_ERROR (
+        Private->PciIo->Mem.Read (Private->PciIo, EfiPciIoWidthUint8,
+                              PCI_BAR_IDX2, 0, sizeof (Edid), Edid)) ||
+      Edid[0] != 0x00 || Edid[1] != 0xFF || Edid[7] != 0x00) {
+    DEBUG ((EFI_D_INFO, "%a: no EDID\n", __FUNCTION__));
+    return FALSE;
+  }
+
+  //
+  // The first detailed timing descriptor (offset 54) is the preferred mode.
+  //
+  *XRes = Edid[56] | ((Edid[58] & 0xF0) << 4);
+  *YRes = Edid[59] | ((Edid[61] & 0xF0) << 4);
+  DEBUG ((EFI_D_INFO, "%a: preferred mode %dx%d\n", __FUNCTION__, *XRes,
+    *YRes));
+  return (*XRes != 0 && *YRes != 0);
+}
 
 EFI_STATUS
 QemuVideoBochsModeSetup (
@@ -261,6 +304,9 @@ QemuVideoBochsModeSetup (
   UINT32                                 Index;
   QEMU_VIDEO_MODE_DATA                   *ModeData;
   QEMU_VIDEO_BOCHS_MODES                 *VideoMode;
+  BOOLEAN                                HaveEdid;
+  UINT32                                 EdidXRes;
+  UINT32                                 EdidYRes;
 
   //
   // Fetch the available framebuffer size.
@@ -309,6 +355,23 @@ QemuVideoBochsModeSetup (
     AvailableFbSize));
 
   //
+  // Add the EDID preferred mode to the spare table entry if it is not listed.
+  //
+  HaveEdid = QemuVideoBochsEdid (Private, &EdidXRes, &EdidYRes);
+  if (HaveEdid) {
+    for (Index = 0; Index < QEMU_VIDEO_BOCHS_MODE_COUNT - 1; Index++) {
+      if (QemuVideoBochsModes[Index].Width == EdidXRes &&
+          QemuVideoBochsModes[Index].Height == EdidYRes) {
+        break;
+      }
+    }
+    if (Index == QEMU_VIDEO_BOCHS_MODE_COUNT - 1) {
+      QemuVideoBochsModes[Index].Width  = EdidXRes;
+      QemuVideoBochsModes[Index].Height = EdidYRes;
+    }
+  }
+
+  //
   // Setup Video Modes
   //
   Private->ModeData = AllocatePool (
@@ -325,7 +388,7 @@ QemuVideoBochsModeSetup (
     ASSERT (VideoMode->ColorDepth % 8 == 0);
     RequiredFbSize = (UINTN) VideoMode->Width * VideoMode->Height *
                      (VideoMode->ColorDepth / 8);
-    if (RequiredFbSize <= AvailableFbSize) {
+    if (VideoMode->Width != 0 && RequiredFbSize <= AvailableFbSize) {
       ModeData->InternalModeIndex    = Index;
       ModeData->HorizontalResolution = VideoMode->Width;
       ModeData->VerticalResolution   = VideoMode->Height;
@@ -346,6 +409,20 @@ QemuVideoBochsModeSetup (
     VideoMode ++;
   }
   Private->MaxMode = ModeData - Private->ModeData;
+
+  //
+  // Boot in the EDID preferred mode, like the native resolution of a monitor.
+  //
+  if (HaveEdid) {
+    for (Index = 0; Index < Private->MaxMode; Index++) {
+      if (Private->ModeData[Index].HorizontalResolution == EdidXRes &&
+          Private->ModeData[Index].VerticalResolution == EdidYRes) {
+        PcdSet32 (PcdVideoHorizontalResolution, EdidXRes);
+        PcdSet32 (PcdVideoVerticalResolution, EdidYRes);
+        break;
+      }
+    }
+  }
 
   return EFI_SUCCESS;
 }

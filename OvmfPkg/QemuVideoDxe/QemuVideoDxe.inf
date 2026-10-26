@@ -44,6 +44,7 @@
 
 [Packages]
   MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
   OptionRomPkg/OptionRomPkg.dec
   OvmfPkg/OvmfPkg.dec
 
@@ -53,6 +54,7 @@
   DebugLib
   DevicePathLib
   MemoryAllocationLib
+  PcdLib
   PciLib
   PrintLib
   TimerLib
@@ -68,4 +70,6 @@
 
 [Pcd]
   gOptionRomPkgTokenSpaceGuid.PcdDriverSupportedEfiVersion
+  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoHorizontalResolution  ## SOMETIMES_PRODUCES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoVerticalResolution    ## SOMETIMES_PRODUCES
 
