@@ -1469,8 +1469,10 @@ Returns:
   // Update Fit Table with FIT Signature and FIT info in first 16 bytes.
   //
   FitStartPtr = (FIT_TABLE *) RelativeAddress;
-
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wstringop-truncation"
   strncpy ((CHAR8 *) &FitStartPtr->CompAddress, FIT_SIGNATURE, 8);  // "_FIT_   "
+  #pragma GCC diagnostic pop
   assert (((VtfInfo->CompSize & 0x00FFFFFF) % 16) == 0);
   FitStartPtr->CompSize     = (VtfInfo->CompSize & 0x00FFFFFF) / 16;
   FitStartPtr->CompVersion  = MAKE_VERSION (VtfInfo->MajorVer, VtfInfo->MinorVer);

@@ -81,7 +81,7 @@ Returns:
   //
   if (mOptions.DumpOption == 1) {
     if (mOptions.FileList != NULL) {
-      if ((Ptr0 = strstr ((CONST CHAR8 *) mOptions.FileList->FileName, DEFAULT_OUTPUT_EXTENSION)) != NULL) {
+      if ((Ptr0 = (CHAR8 *)strstr ((CONST CHAR8 *) mOptions.FileList->FileName, DEFAULT_OUTPUT_EXTENSION)) != NULL) {
         DumpImage (mOptions.FileList);
         goto BailOut;
       } else {

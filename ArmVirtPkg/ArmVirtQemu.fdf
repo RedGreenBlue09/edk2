@@ -194,6 +194,7 @@ READ_LOCK_STATUS   = TRUE
   #
   INF MdeModulePkg/Bus/Scsi/ScsiBusDxe/ScsiBusDxe.inf
   INF MdeModulePkg/Bus/Scsi/ScsiDiskDxe/ScsiDiskDxe.inf
+  INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
 
   #
   # SMBIOS Support
