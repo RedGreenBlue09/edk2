@@ -779,7 +779,7 @@ UfsPassThruDriverBindingStart (
   UFS_PASS_THRU_PRIVATE_DATA            *Private;
   UINTN                                 UfsHcBase;
   UINT32                                Index;
-  UFS_CONFIG_DESC                       Config;
+  UFS_UNIT_DESC                         UnitDescriptor;
 
   Status    = EFI_SUCCESS;
   UfsHc     = NULL;
@@ -854,20 +854,19 @@ UfsPassThruDriverBindingStart (
   }
 
   //
-  // Get Ufs Device's Lun Info by reading Configuration Descriptor.
-  //
-  Status = UfsRwDeviceDesc (Private, TRUE, UfsConfigDesc, 0, 0, &Config, sizeof (UFS_CONFIG_DESC));
-  if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "Ufs Get Configuration Descriptor Error, Status = %r\n", Status));
-    goto Error;
-  }
-
-  //
   // Check if 8 common luns are active and set corresponding bit mask.
+  // Read each Unit Descriptor instead of the Configuration Descriptor, which
+  // not every device supports (QEMU's ufs doesn't). Backported from upstream
+  // 95ad8f7f by Hao Wu.
   // TODO: Parse device descriptor to decide if exposing RPMB LUN to upper layer for authentication access.
   //
   for (Index = 0; Index < 8; Index++) {
-    if (Config.UnitDescConfParams[Index].LunEn != 0) {
+    Status = UfsRwDeviceDesc (Private, TRUE, UfsUnitDesc, (UINT8) Index, 0, &UnitDescriptor, sizeof (UFS_UNIT_DESC));
+    if (EFI_ERROR (Status)) {
+      DEBUG ((EFI_D_ERROR, "Failed to read unit descriptor, index = %X, status = %r\n", Index, Status));
+      continue;
+    }
+    if (UnitDescriptor.LunEn == 0x1) {
       Private->Luns.BitMask |= (BIT0 << Index);
       DEBUG ((EFI_D_INFO, "Ufs Lun %d is enabled\n", Index));
     }
